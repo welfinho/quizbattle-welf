@@ -9,10 +9,11 @@ phases:
       - zip -r register-player-welf.zip register-player-welf
       - zip -r submit-answer-welf-v2.zip submit-answer-welf
       - zip -r next-question-welf.zip next-question-welf
-
+      - cp quizbattle-infra-welf.yaml .
 artifacts:
   files:
     - register-player-welf.zip
     - submit-answer-welf-v2.zip
     - next-question-welf.zip
+    - quizbattle-infra-welf.yaml
   discard-paths: yes
