@@ -8,7 +8,9 @@ phases:
     commands:
       - zip -r register-player-welf.zip register-player-welf
       - zip -r submit-answer-welf.zip submit-answer-welf
+
 artifacts:
   files:
     - register-player-welf.zip
     - submit-answer-welf.zip
+  discard-paths: yes
