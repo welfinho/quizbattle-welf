@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>QuizBattle – Frage</title>
+</head>
+<body>
+  <h1>Nächste Frage</h1>
+  <div id="questionText">Lade Frage...</div>
+
+  <form id="answerForm">
+    <input type="text" id="answer" name="answer" placeholder="Deine Antwort" required />
+    <button type="submit">Antwort abschicken</button>
+  </form>
+
+  <div id="feedback"></div>
+
+  <script>
+    const playerId = localStorage.getItem("playerId");
+    let currentQuestionId = null;
+
+    async function loadQuestion() {
+      const response = await fetch('https://89965yu1d8.execute-api.eu-west-1.amazonaws.com/prod/next');
+      const data = await response.json();
+      document.getElementById('questionText').innerText = data.questionText;
+      currentQuestionId = data.questionId;
+    }
+
+    document.getElementById('answerForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const answer = document.getElementById('answer').value.trim();
+
+      const response = await fetch('https://89965yu1d8.execute-api.eu-west-1.amazonaws.com/prod/submit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          playerId,
+          questionId: currentQuestionId,
+          answer
+        })
+      });
+
+      const data = await response.json();
+      document.getElementById('feedback').innerText = data.correct
+        ? "✅ Richtig!"
+        : "❌ Leider falsch.";
+
+      setTimeout(() => {
+        document.getElementById('answer').value = "";
+        loadQuestion();
+      }, 1500);
+    });
+
+    loadQuestion();
+  </script>
+</body>
+</html>
