@@ -4,12 +4,13 @@ phases:
   install:
     runtime-versions:
       python: 3.11
+
   build:
     commands:
       - zip -r register-player-welf.zip register-player-welf
       - zip -r submit-answer-welf-v2.zip submit-answer-welf
       - zip -r next-question-welf.zip next-question-welf
-      - cp quizbattle-infra-welf.yaml .
+
 artifacts:
   files:
     - register-player-welf.zip
