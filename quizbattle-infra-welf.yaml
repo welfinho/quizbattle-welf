@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: QuizBattle Live - Infrastruktur für Welf
+Description: QuizBattle Live - Infrastruktur for Welf
 
 Parameters:
   StageName:
@@ -20,7 +20,7 @@ Parameters:
 
 Resources:
 
-  ### DynamoDB Table for Players ###
+  ### DynamoDB Tables ###
   PlayersTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -33,7 +33,6 @@ Resources:
         - AttributeName: playerId
           KeyType: HASH
 
-  ### DynamoDB Table for Questions ###
   QuestionsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -46,7 +45,7 @@ Resources:
         - AttributeName: questionId
           KeyType: HASH
 
-  ### Lambda Execution Role ###
+  ### Lambda Role ###
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -59,7 +58,7 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: DynamoDBAccess
+        - PolicyName: LambdaDynamoDBPolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -77,7 +76,7 @@ Resources:
                   - logs:PutLogEvents
                 Resource: '*'
 
-  ### Lambda Function: Register Player ###
+  ### Lambda Functions ###
   RegisterPlayerFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -92,7 +91,6 @@ Resources:
         Variables:
           PLAYERS_TABLE: !Ref PlayersTable
 
-  ### Lambda Function: Submit Answer ###
   SubmitAnswerFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -108,7 +106,6 @@ Resources:
           PLAYERS_TABLE: !Ref PlayersTable
           QUESTIONS_TABLE: !Ref QuestionsTable
 
-  ### Lambda Function: Next Question ###
   NextQuestionFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -129,7 +126,6 @@ Resources:
     Properties:
       Name: QuizBattleAPI-welf
 
-  ### /join Endpoint ###
   QuizJoin:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -140,6 +136,27 @@ Resources:
       PathPart: join
       RestApiId: !Ref QuizApi
 
+  QuizSubmit:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId:
+        Fn::GetAtt:
+          - QuizApi
+          - RootResourceId
+      PathPart: submit
+      RestApiId: !Ref QuizApi
+
+  QuizNext:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId:
+        Fn::GetAtt:
+          - QuizApi
+          - RootResourceId
+      PathPart: next
+      RestApiId: !Ref QuizApi
+
+  ### API Methods ###
   RegisterPlayerMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -156,25 +173,6 @@ Resources:
               Region: !Ref "AWS::Region",
               LambdaArn: !GetAtt RegisterPlayerFunction.Arn
             }
-
-  LambdaInvokePermissionRegister:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref RegisterPlayerFunction
-      Action: lambda:InvokeFunction
-      Principal: apigateway.amazonaws.com
-      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${QuizApi}/*/*/join
-
-  ### /submit Endpoint ###
-  QuizSubmit:
-    Type: AWS::ApiGateway::Resource
-    Properties:
-      ParentId:
-        Fn::GetAtt:
-          - QuizApi
-          - RootResourceId
-      PathPart: submit
-      RestApiId: !Ref QuizApi
 
   SubmitAnswerMethod:
     Type: AWS::ApiGateway::Method
@@ -193,25 +191,6 @@ Resources:
               LambdaArn: !GetAtt SubmitAnswerFunction.Arn
             }
 
-  LambdaInvokePermissionSubmit:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref SubmitAnswerFunction
-      Action: lambda:InvokeFunction
-      Principal: apigateway.amazonaws.com
-      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${QuizApi}/*/*/submit
-
-  ### /next Endpoint ###
-  QuizNext:
-    Type: AWS::ApiGateway::Resource
-    Properties:
-      ParentId:
-        Fn::GetAtt:
-          - QuizApi
-          - RootResourceId
-      PathPart: next
-      RestApiId: !Ref QuizApi
-
   NextQuestionMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -228,6 +207,23 @@ Resources:
               Region: !Ref "AWS::Region",
               LambdaArn: !GetAtt NextQuestionFunction.Arn
             }
+
+  ### Lambda Invoke Permissions ###
+  LambdaInvokePermissionRegister:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RegisterPlayerFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${QuizApi}/*/*/join
+
+  LambdaInvokePermissionSubmit:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SubmitAnswerFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${QuizApi}/*/*/submit
 
   LambdaInvokePermissionNext:
     Type: AWS::Lambda::Permission
