@@ -14,27 +14,26 @@ def lambda_handler(event, context):
         if not items:
             return {
                 "statusCode": 404,
+                "headers": {"Access-Control-Allow-Origin": "*"},
                 "body": json.dumps({"error": "No questions available"})
             }
 
         question = random.choice(items)
-        options = [opt["S"] for opt in question["options"]["L"]]
-        correct_index = int(question["correctAnswerIndex"]["N"])
-        correct_letter = ["A", "B", "C", "D"][correct_index]
 
         return {
             "statusCode": 200,
             "headers": {"Access-Control-Allow-Origin": "*"},
             "body": json.dumps({
-                "questionId": question["questionId"]["S"],
-                "questionText": question["questionText"]["S"],
-                "answers": options,
-                "correctAnswer": correct_letter
+                "questionId": question["questionId"],
+                "questionText": question["questionText"],
+                "answers": question["options"],
+                "correctAnswer": ["A", "B", "C", "D"][int(question["correctAnswerIndex"])]
             })
         }
 
     except Exception as e:
         return {
             "statusCode": 500,
+            "headers": {"Access-Control-Allow-Origin": "*"},
             "body": json.dumps({"error": str(e)})
         }
