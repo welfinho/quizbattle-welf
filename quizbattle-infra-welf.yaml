@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: QuizBattle Live - Infrastruktur for Welf
+Description: QuizBattle Live - Komplettes IaC-Template mit CI/CD
 
 Parameters:
   StageName:
@@ -20,29 +20,9 @@ Parameters:
 
 Resources:
 
-  PlayersTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: QuizPlayers-welf
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: playerId
-          AttributeType: S
-      KeySchema:
-        - AttributeName: playerId
-          KeyType: HASH
-
-  QuestionsTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: QuizQuestions-welf
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: questionId
-          AttributeType: S
-      KeySchema:
-        - AttributeName: questionId
-          KeyType: HASH
+  ###################################
+  # IAM Roles
+  ###################################
 
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -73,6 +53,91 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: '*'
+
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: quiz-codebuild-role-welf
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodeBuildAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketLocation
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+
+  CodePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: quiz-pipeline-role-welf
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodePipelineAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:*
+                  - codebuild:*
+                  - iam:PassRole
+                Resource: '*'
+
+  ###################################
+  # DynamoDB Tables
+  ###################################
+
+  PlayersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: QuizPlayers-welf
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: playerId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: playerId
+          KeyType: HASH
+
+  QuestionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: QuizQuestions-welf
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: questionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: questionId
+          KeyType: HASH
+
+  ###################################
+  # Lambda Functions
+  ###################################
 
   RegisterPlayerFunction:
     Type: AWS::Lambda::Function
@@ -117,6 +182,10 @@ Resources:
         Variables:
           QUESTIONS_TABLE: !Ref QuestionsTable
 
+  ###################################
+  # API Gateway
+  ###################################
+
   QuizApi:
     Type: AWS::ApiGateway::RestApi
     Properties:
@@ -125,30 +194,21 @@ Resources:
   QuizJoin:
     Type: AWS::ApiGateway::Resource
     Properties:
-      ParentId:
-        Fn::GetAtt:
-          - QuizApi
-          - RootResourceId
+      ParentId: !GetAtt QuizApi.RootResourceId
       PathPart: join
       RestApiId: !Ref QuizApi
 
   QuizSubmit:
     Type: AWS::ApiGateway::Resource
     Properties:
-      ParentId:
-        Fn::GetAtt:
-          - QuizApi
-          - RootResourceId
+      ParentId: !GetAtt QuizApi.RootResourceId
       PathPart: submit
       RestApiId: !Ref QuizApi
 
   QuizNext:
     Type: AWS::ApiGateway::Resource
     Properties:
-      ParentId:
-        Fn::GetAtt:
-          - QuizApi
-          - RootResourceId
+      ParentId: !GetAtt QuizApi.RootResourceId
       PathPart: next
       RestApiId: !Ref QuizApi
 
@@ -162,12 +222,7 @@ Resources:
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
-        Uri: !Sub
-          - arn:aws:apigateway:${Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
-          - {
-              Region: !Ref "AWS::Region",
-              LambdaArn: !GetAtt RegisterPlayerFunction.Arn
-            }
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RegisterPlayerFunction.Arn}/invocations
 
   SubmitAnswerMethod:
     Type: AWS::ApiGateway::Method
@@ -179,12 +234,7 @@ Resources:
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
-        Uri: !Sub
-          - arn:aws:apigateway:${Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
-          - {
-              Region: !Ref "AWS::Region",
-              LambdaArn: !GetAtt SubmitAnswerFunction.Arn
-            }
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SubmitAnswerFunction.Arn}/invocations
 
   NextQuestionMethod:
     Type: AWS::ApiGateway::Method
@@ -196,12 +246,7 @@ Resources:
       Integration:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
-        Uri: !Sub
-          - arn:aws:apigateway:${Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
-          - {
-              Region: !Ref "AWS::Region",
-              LambdaArn: !GetAtt NextQuestionFunction.Arn
-            }
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${NextQuestionFunction.Arn}/invocations
 
   LambdaInvokePermissionRegister:
     Type: AWS::Lambda::Permission
