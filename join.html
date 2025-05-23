@@ -17,8 +17,7 @@
   </main>
 
   <script>
-    const form = document.getElementById('joinForm');
-    form.addEventListener('submit', async (e) => {
+    document.getElementById('joinForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const name = document.getElementById('name').value;
       const email = document.getElementById('email').value;
