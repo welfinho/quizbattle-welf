@@ -1,5 +1,4 @@
 # lambda_function.py (für next-question-welf)
-
 import json
 import boto3
 import os
@@ -17,6 +16,7 @@ def lambda_handler(event, context):
         if not items:
             return {
                 "statusCode": 404,
+                "headers": {"Access-Control-Allow-Origin": "*"},
                 "body": json.dumps({"error": "No questions available"})
             }
 
@@ -34,5 +34,6 @@ def lambda_handler(event, context):
     except Exception as e:
         return {
             "statusCode": 500,
+            "headers": {"Access-Control-Allow-Origin": "*"},
             "body": json.dumps({"error": str(e)})
         }
