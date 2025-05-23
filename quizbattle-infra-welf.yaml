@@ -20,7 +20,6 @@ Parameters:
 
 Resources:
 
-  ### DynamoDB Tables ###
   PlayersTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -45,7 +44,6 @@ Resources:
         - AttributeName: questionId
           KeyType: HASH
 
-  ### Lambda Role ###
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -76,7 +74,6 @@ Resources:
                   - logs:PutLogEvents
                 Resource: '*'
 
-  ### Lambda Functions ###
   RegisterPlayerFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -120,7 +117,6 @@ Resources:
         Variables:
           QUESTIONS_TABLE: !Ref QuestionsTable
 
-  ### API Gateway ###
   QuizApi:
     Type: AWS::ApiGateway::RestApi
     Properties:
@@ -156,7 +152,6 @@ Resources:
       PathPart: next
       RestApiId: !Ref QuizApi
 
-  ### API Methods ###
   RegisterPlayerMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -208,7 +203,6 @@ Resources:
               LambdaArn: !GetAtt NextQuestionFunction.Arn
             }
 
-  ### Lambda Invoke Permissions ###
   LambdaInvokePermissionRegister:
     Type: AWS::Lambda::Permission
     Properties:
@@ -231,7 +225,7 @@ Resources:
       FunctionName: !Ref NextQuestionFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${QuizApi}/*/GET/next
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${QuizApi}/*/*/next
 
 Outputs:
   WebsiteJoinURL:
