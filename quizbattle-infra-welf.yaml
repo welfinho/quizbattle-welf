@@ -194,7 +194,7 @@ Resources:
       ResourceId: !Ref QuizNext
       RestApiId: !Ref QuizApi
       Integration:
-        IntegrationHttpMethod: GET
+        IntegrationHttpMethod: POST
         Type: AWS_PROXY
         Uri: !Sub
           - arn:aws:apigateway:${Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
