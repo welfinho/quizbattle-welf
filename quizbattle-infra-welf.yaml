@@ -16,7 +16,7 @@ Parameters:
     Default: submit-answer-welf-v2.zip
   LambdaCodeS3KeyNext:
     Type: String
-    Default: next-question-welf.zip
+    Default: next-question-welf-v2.zip
 
 Resources:
 
