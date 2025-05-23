@@ -1,39 +1,22 @@
-import json
-import boto3
-import os
-import random
+import json, os, boto3
+dynamodb = boto3.resource("dynamodb")
+table     = dynamodb.Table(os.environ["QUESTIONS_TABLE"])
+HEADERS   = {"Access-Control-Allow-Origin": "*", "Content-Type": "application/json"}
+ORDERED   = [f"q{i}" for i in range(1, 11)]   # q1…q10 = feste Reihenfolge
 
-dynamodb = boto3.resource('dynamodb')
-questions_table = dynamodb.Table(os.environ['QUESTIONS_TABLE'])
+def lambda_handler(event, _):
+    asked = event.get("queryStringParameters", {}).get("asked", "")
+    idx   = len([x for x in asked.split(",") if x])   # 0-10
+    if idx >= 10:
+        return {"statusCode": 204, "headers": HEADERS, "body": ""}
 
-def lambda_handler(event, context):
-    try:
-        response = questions_table.scan()
-        items = response.get("Items", [])
+    qid = ORDERED[idx]
+    q   = table.get_item(Key={"questionId": qid})["Item"]
+    i   = int(q["correctAnswerIndex"])
 
-        if not items:
-            return {
-                "statusCode": 404,
-                "headers": {"Access-Control-Allow-Origin": "*"},
-                "body": json.dumps({"error": "No questions available"})
-            }
-
-        question = random.choice(items)
-
-        return {
-            "statusCode": 200,
-            "headers": {"Access-Control-Allow-Origin": "*"},
-            "body": json.dumps({
-                "questionId": question["questionId"],
-                "questionText": question["questionText"],
-                "answers": question["options"],
-                "correctAnswer": ["A", "B", "C", "D"][int(question["correctAnswerIndex"])]
-            })
-        }
-
-    except Exception as e:
-        return {
-            "statusCode": 500,
-            "headers": {"Access-Control-Allow-Origin": "*"},
-            "body": json.dumps({"error": str(e)})
-        }
+    return {"statusCode": 200, "headers": HEADERS, "body": json.dumps({
+        "questionId":   qid,
+        "questionText": q["questionText"],
+        "answers":      q["options"],
+        "correctAnswer": ["A","B","C","D"][i]
+    })}

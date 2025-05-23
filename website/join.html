@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuizBattle – Mitspielen</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<main>
+  <h1>Willkommen bei QuizBattle</h1>
+  <form id="joinForm">
+    <input type="text" id="name" name="name" placeholder="Dein Name" required />
+    <input type="email" id="email" name="email" placeholder="Deine E-Mail" required />
+    <button type="submit">Mitspielen</button>
+  </form>
+  <p id="response"></p>
+</main>
+
+<script>
+const API = "https://61qokxnjpk.execute-api.eu-west-1.amazonaws.com/prod";
+
+document.getElementById("joinForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const name  = document.getElementById("name").value;
+  const email = document.getElementById("email").value;
+
+  const res  = await fetch(`${API}/join`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, email })
+  });
+
+  const out = await res.json();
+  if (out.playerId) {
+    localStorage.setItem("playerId", out.playerId);
+    window.location.href = "quiz.html";
+  } else {
+    document.getElementById("response").innerText = out.error || "Fehler.";
+  }
+});
+</script>
+</body>
+</html>

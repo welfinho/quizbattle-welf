@@ -1,72 +1,37 @@
-import json
-import boto3
-import os
+import json, os, boto3
+dynamodb = boto3.resource("dynamodb")
+players   = dynamodb.Table(os.environ["PLAYERS_TABLE"])
+questions = dynamodb.Table(os.environ["QUESTIONS_TABLE"])
+sns       = boto3.client("sns")
+TOPIC     = os.environ["EVENT_TOPIC"]
+HEADERS   = {"Access-Control-Allow-Origin": "*", "Content-Type": "application/json"}
 
-dynamodb = boto3.resource('dynamodb')
-players_table = dynamodb.Table(os.environ['PLAYERS_TABLE'])
-questions_table = dynamodb.Table(os.environ['QUESTIONS_TABLE'])
+def lambda_handler(event, _):
+    body = json.loads(event.get("body", "{}"))
+    pid  = body.get("playerId")
+    score = body.get("score")          # gesendet beim Finish
 
-def lambda_handler(event, context):
-    try:
-        body = json.loads(event.get("body", "{}"))
-        player_id = body.get("playerId")
-        question_id = body.get("questionId")
-        answer = body.get("answer")
-    except:
-        return {
-            "statusCode": 400,
-            "headers": {
-                "Access-Control-Allow-Origin": "*"
-            },
-            "body": json.dumps({"error": "Invalid input"})
-        }
+    # === Finish-Fall – Score mailen =========================
+    if score is not None:
+        email = players.get_item(Key={"playerId": pid})["Item"]["email"]
+        sns.publish(
+            TopicArn = TOPIC,
+            Subject  = "QuizFinished",
+            Message  = json.dumps({"email": email, "score": score})
+        )
+        return {"statusCode": 200, "headers": HEADERS, "body": "{}"}
 
-    if not player_id or not question_id or not answer:
-        return {
-            "statusCode": 400,
-            "headers": {
-                "Access-Control-Allow-Origin": "*"
-            },
-            "body": json.dumps({"error": "Missing fields"})
-        }
-
-    try:
-        question_resp = questions_table.get_item(Key={"questionId": question_id})
-        question_item = question_resp.get("Item", {})
-        correct_answer = question_item.get("correctAnswer")
-    except Exception as e:
-        return {
-            "statusCode": 500,
-            "headers": {
-                "Access-Control-Allow-Origin": "*"
-            },
-            "body": json.dumps({"error": str(e)})
-        }
-
-    is_correct = (answer.strip().lower() == correct_answer.strip().lower())
-
-    if is_correct:
-        try:
-            players_table.update_item(
-                Key={"playerId": player_id},
-                UpdateExpression="SET score = score + :inc",
-                ExpressionAttributeValues={":inc": 1}
-            )
-        except Exception as e:
-            return {
-                "statusCode": 500,
-                "headers": {
-                    "Access-Control-Allow-Origin": "*"
-                },
-                "body": json.dumps({"error": "Score update failed: " + str(e)})
-            }
-
-    return {
-        "statusCode": 200,
-        "headers": {
-            "Access-Control-Allow-Origin": "*"
-        },
-        "body": json.dumps({
-            "correct": is_correct
-        })
-    }
+    # === Normaler Antwort-Fall ==============================
+    qid   = body.get("questionId")
+    ans   = body.get("answer", "").strip().upper()
+    qitem = questions.get_item(Key={"questionId": qid})["Item"]
+    correct = ["A","B","C","D"][int(qitem["correctAnswerIndex"])]
+    ok = ans == correct
+    if ok:
+        players.update_item(
+            Key={"playerId": pid},
+            UpdateExpression="ADD score :inc",
+            ExpressionAttributeValues={":inc": 1}
+        )
+    return {"statusCode": 200, "headers": HEADERS,
+            "body": json.dumps({"correct": ok})}

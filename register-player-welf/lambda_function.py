@@ -1,67 +1,20 @@
-import json
-import boto3
-import uuid
-import time
-import os
+import json, boto3, uuid, time, os
+dynamodb = boto3.resource("dynamodb")
+table    = dynamodb.Table(os.environ["PLAYERS_TABLE"])
+sns      = boto3.client("sns")
+TOPIC    = os.environ["EVENT_TOPIC"]
+HEADERS  = {"Access-Control-Allow-Origin": "*", "Content-Type": "application/json"}
 
-dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table(os.environ['PLAYERS_TABLE'])
-
-def lambda_handler(event, context):
-    # Eingabe auslesen
-    try:
-        body = json.loads(event.get("body", "{}"))
-        name = body.get("name", "").strip()
-        email = body.get("email", "").strip()
-    except Exception as e:
-        return {
-            "statusCode": 400,
-            "headers": {
-                "Access-Control-Allow-Origin": "*"
-            },
-            "body": json.dumps({"error": "Invalid input"})
-        }
-
-    # Validierung
+def lambda_handler(event, _):
+    data = json.loads(event.get("body", "{}"))
+    name, email = data.get("name","").strip(), data.get("email","").strip()
     if not name or not email:
-        return {
-            "statusCode": 400,
-            "headers": {
-                "Access-Control-Allow-Origin": "*"
-            },
-            "body": json.dumps({"error": "Name and email are required"})
-        }
+        return {"statusCode": 400, "headers": HEADERS, "body": json.dumps({"error":"Missing"})}
 
-    # Spieler-ID erzeugen
-    player_id = str(uuid.uuid4())
+    pid = str(uuid.uuid4())
+    table.put_item(Item={"playerId":pid,"name":name,"email":email,"score":0,"ts":int(time.time())})
 
-    # Eintrag speichern
-    try:
-        table.put_item(Item={
-            "playerId": player_id,
-            "name": name,
-            "email": email,
-            "score": 0,
-            "timestamp": int(time.time())
-        })
-    except Exception as e:
-        return {
-            "statusCode": 500,
-            "headers": {
-                "Access-Control-Allow-Origin": "*"
-            },
-            "body": json.dumps({"error": str(e)})
-        }
+    sns.publish(TopicArn=TOPIC, Subject="PlayerJoined",
+                Message=json.dumps({"playerId":pid, "name":name, "email":email}))
 
-    # Erfolgreich
-    return {
-        "statusCode": 200,
-        "headers": {
-            "Access-Control-Allow-Origin": "*"
-        },
-        "body": json.dumps({
-            "playerId": player_id,
-            "message": f"Willkommen, {name}!",
-            "score": 0
-        })
-    }
+    return {"statusCode":200,"headers":HEADERS,"body":json.dumps({"playerId":pid})}
