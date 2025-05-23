@@ -1,63 +1,38 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: QuizBattle Live - Komplettes IaC-Template mit CI/CD
+Description: QuizBattle
 
 Parameters:
   StageName:
     Type: String
     Default: prod
-  LambdaCodeS3Bucket:
+  CodeBucket:
     Type: String
     Default: quizbattle-code-welf
-  LambdaCodeS3KeyRegister:
+  ZipRegister:
     Type: String
-    Default: register-player-welf.zip
-  LambdaCodeS3KeySubmit:
+    Default: register-player-welf-v2.zip
+  ZipSubmit:
     Type: String
-    Default: submit-answer-welf-v2.zip
-  LambdaCodeS3KeyNext:
+    Default: submit-answer-welf-v4.zip
+  ZipNext:
     Type: String
-    Default: next-question-welf-v3.zip
+    Default: next-question-welf-v5.zip
+  ZipEmail:
+    Type: String
+    Default: send-score-email-welf-v1.zip
+  SenderEmail:
+    Type: String
+    Default: quiz@example.com         # SES-verifiziert
 
 Resources:
 
-  ###################################
-  # IAM Roles
-  ###################################
-
-  LambdaExecutionRole:
-    Type: AWS::IAM::Role
+  ### SNS ###
+  QuizEventTopic:
+    Type: AWS::SNS::Topic
     Properties:
-      RoleName: QuizBattleLambdaRole-welf
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: LambdaDynamoDBPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - dynamodb:GetItem
-                  - dynamodb:PutItem
-                  - dynamodb:Scan
-                  - dynamodb:UpdateItem
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: '*'
+      TopicName: quizbattle-events
 
-  ###################################
-  # DynamoDB Tables
-  ###################################
-
+  ### DynamoDB (bleiben erhalten) ###
   PlayersTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -82,152 +57,175 @@ Resources:
         - AttributeName: questionId
           KeyType: HASH
 
-  ###################################
-  # Lambda Functions
-  ###################################
+  ### IAM ###
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [ dynamodb:*, sns:Publish, ses:SendEmail, logs:* ]
+                Resource: '*'
 
+  ### Lambda: register ###
   RegisterPlayerFunction:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: register-player-welf
-      Handler: lambda_function.lambda_handler
       Runtime: python3.11
-      Role: !GetAtt LambdaExecutionRole.Arn
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt LambdaRole.Arn
       Code:
-        S3Bucket: !Ref LambdaCodeS3Bucket
-        S3Key: !Ref LambdaCodeS3KeyRegister
+        S3Bucket: !Ref CodeBucket
+        S3Key:    !Ref ZipRegister
       Environment:
         Variables:
           PLAYERS_TABLE: !Ref PlayersTable
+          EVENT_TOPIC:   !Ref QuizEventTopic
 
+  ### Lambda: submit ###
   SubmitAnswerFunction:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: submit-answer-welf
-      Handler: lambda_function.lambda_handler
       Runtime: python3.11
-      Role: !GetAtt LambdaExecutionRole.Arn
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt LambdaRole.Arn
       Code:
-        S3Bucket: !Ref LambdaCodeS3Bucket
-        S3Key: !Ref LambdaCodeS3KeySubmit
+        S3Bucket: !Ref CodeBucket
+        S3Key:    !Ref ZipSubmit
       Environment:
         Variables:
-          PLAYERS_TABLE: !Ref PlayersTable
+          PLAYERS_TABLE:   !Ref PlayersTable
           QUESTIONS_TABLE: !Ref QuestionsTable
+          EVENT_TOPIC:     !Ref QuizEventTopic
 
+  ### Lambda: next ###
   NextQuestionFunction:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: next-question-welf
-      Handler: lambda_function.lambda_handler
       Runtime: python3.11
-      Role: !GetAtt LambdaExecutionRole.Arn
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt LambdaRole.Arn
       Code:
-        S3Bucket: !Ref LambdaCodeS3Bucket
-        S3Key: !Ref LambdaCodeS3KeyNext
+        S3Bucket: !Ref CodeBucket
+        S3Key:    !Ref ZipNext
       Environment:
         Variables:
           QUESTIONS_TABLE: !Ref QuestionsTable
 
-  ###################################
-  # API Gateway
-  ###################################
+  ### Lambda: E-Mail ###
+  EmailFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: send-score-email-welf
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt LambdaRole.Arn
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key:    !Ref ZipEmail
+      Environment:
+        Variables:
+          SENDER: !Ref SenderEmail
 
-  QuizApi:
+  ### SNS → Lambda ###
+  EmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref QuizEventTopic
+      Protocol: lambda
+      Endpoint: !GetAtt EmailFunction.Arn
+
+  EmailInvokePerm:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref EmailFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref QuizEventTopic
+
+  ### API Gateway ###
+  Api:
     Type: AWS::ApiGateway::RestApi
     Properties:
-      Name: QuizBattleAPI-welf
+      Name: QuizBattleAPI
 
-  QuizJoin:
+  ResJoin:
     Type: AWS::ApiGateway::Resource
     Properties:
-      ParentId: !GetAtt QuizApi.RootResourceId
+      RestApiId: !Ref Api
+      ParentId:  !GetAtt Api.RootResourceId
       PathPart: join
-      RestApiId: !Ref QuizApi
 
-  QuizSubmit:
+  ResSubmit:
     Type: AWS::ApiGateway::Resource
     Properties:
-      ParentId: !GetAtt QuizApi.RootResourceId
+      RestApiId: !Ref Api
+      ParentId:  !GetAtt Api.RootResourceId
       PathPart: submit
-      RestApiId: !Ref QuizApi
 
-  QuizNext:
+  ResNext:
     Type: AWS::ApiGateway::Resource
     Properties:
-      ParentId: !GetAtt QuizApi.RootResourceId
+      RestApiId: !Ref Api
+      ParentId:  !GetAtt Api.RootResourceId
       PathPart: next
-      RestApiId: !Ref QuizApi
 
-  RegisterPlayerMethod:
+  MethJoin:
     Type: AWS::ApiGateway::Method
     Properties:
-      AuthorizationType: NONE
+      RestApiId: !Ref Api
+      ResourceId: !Ref ResJoin
       HttpMethod: POST
-      ResourceId: !Ref QuizJoin
-      RestApiId: !Ref QuizApi
+      AuthorizationType: NONE
       Integration:
-        IntegrationHttpMethod: POST
         Type: AWS_PROXY
-        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RegisterPlayerFunction.Arn}/invocations
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RegisterPlayerFunction.Arn}/invocations"
 
-  SubmitAnswerMethod:
+  MethSubmit:
     Type: AWS::ApiGateway::Method
     Properties:
-      AuthorizationType: NONE
+      RestApiId: !Ref Api
+      ResourceId: !Ref ResSubmit
       HttpMethod: POST
-      ResourceId: !Ref QuizSubmit
-      RestApiId: !Ref QuizApi
+      AuthorizationType: NONE
       Integration:
-        IntegrationHttpMethod: POST
         Type: AWS_PROXY
-        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SubmitAnswerFunction.Arn}/invocations
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SubmitAnswerFunction.Arn}/invocations"
 
-  NextQuestionMethod:
+  MethNext:
     Type: AWS::ApiGateway::Method
     Properties:
-      AuthorizationType: NONE
+      RestApiId: !Ref Api
+      ResourceId: !Ref ResNext
       HttpMethod: GET
-      ResourceId: !Ref QuizNext
-      RestApiId: !Ref QuizApi
+      AuthorizationType: NONE
       Integration:
-        IntegrationHttpMethod: POST
         Type: AWS_PROXY
-        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${NextQuestionFunction.Arn}/invocations
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${NextQuestionFunction.Arn}/invocations"
 
-  LambdaInvokePermissionRegister:
-    Type: AWS::Lambda::Permission
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: [ MethJoin, MethSubmit, MethNext ]
     Properties:
-      FunctionName: !Ref RegisterPlayerFunction
-      Action: lambda:InvokeFunction
-      Principal: apigateway.amazonaws.com
-      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${QuizApi}/*/*/join
-
-  LambdaInvokePermissionSubmit:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref SubmitAnswerFunction
-      Action: lambda:InvokeFunction
-      Principal: apigateway.amazonaws.com
-      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${QuizApi}/*/*/submit
-
-  LambdaInvokePermissionNext:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref NextQuestionFunction
-      Action: lambda:InvokeFunction
-      Principal: apigateway.amazonaws.com
-      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${QuizApi}/*/*/next
+      RestApiId: !Ref Api
+      StageName: !Ref StageName
 
 Outputs:
-  WebsiteJoinURL:
-    Description: Endpoint for player registration
-    Value: !Sub https://${QuizApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/join
-
-  WebsiteSubmitURL:
-    Description: Endpoint for submitting answers
-    Value: !Sub https://${QuizApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/submit
-
-  WebsiteNextURL:
-    Description: Endpoint for retrieving next question
-    Value: !Sub https://${QuizApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/next
+  BaseURL:
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/${StageName}"

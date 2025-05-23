@@ -1,20 +1,34 @@
 version: 0.2
 
+env:
+  variables:
+    FRONTEND_BUCKET: quizbattle-frontend-welf   # Website-Bucket
+    CODE_BUCKET:     quizbattle-code-welf       # ZIP-Bucket
+
 phases:
   install:
     runtime-versions:
       python: 3.11
-
   build:
     commands:
-      - zip -r register-player-welf.zip register-player-welf
-      - zip -r submit-answer-welf-v2.zip submit-answer-welf
-      - zip -r next-question-welf-v3.zip next-question-welf
+      # 1) LAMBDA-ZIPs bauen
+      - zip -j register-player-welf.zip register-player-welf/lambda_function.py
+      - zip -j submit-answer-welf.zip   submit-answer-welf/lambda_function.py
+      - zip -j next-question-welf.zip   next-question-welf/lambda_function.py
+      - zip -j send-score-email-welf.zip send-score-email-welf/lambda_function.py
 
+      # 2) ZIPs in Code-Bucket ablegen
+      - aws s3 cp register-player-welf.zip s3://$CODE_BUCKET/
+      - aws s3 cp submit-answer-welf.zip   s3://$CODE_BUCKET/
+      - aws s3 cp next-question-welf.zip   s3://$CODE_BUCKET/
+      - aws s3 cp send-score-email-welf.zip s3://$CODE_BUCKET/
+
+      # 3) Website in Frontend-Bucket synchronisieren
+      - aws s3 sync website s3://$FRONTEND_BUCKET --delete
 artifacts:
   files:
     - register-player-welf.zip
-    - submit-answer-welf-v2.zip
-    - next-question-welf-v3.zip
+    - submit-answer-welf.zip
+    - next-question-welf.zip
+    - send-score-email-welf.zip
     - quizbattle-infra-welf.yaml
-  discard-paths: yes
